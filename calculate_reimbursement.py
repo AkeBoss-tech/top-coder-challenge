@@ -1,75 +1,93 @@
 import sys
-import joblib
 import numpy as np
+import pandas as pd
 
-def calculate_tiered_mileage(miles):
-    """Calculate tiered mileage feature based on the rates from your training code"""
-    if miles > 100:
-        return (100 * 0.58) + ((miles - 100) * 0.45)
-    else:
-        return miles * 0.58
+def calculate_reimbursement(trip_duration_days, miles_traveled, total_receipts_amount, coefficients_df):
+    """
+    Calculates the reimbursement amount using a pre-trained linear model.
+
+    Args:
+        trip_duration_days (float): Duration of the trip in days.
+        miles_traveled (float): Total miles traveled.
+        total_receipts_amount (float): Total amount from receipts.
+        coefficients_df (pd.DataFrame): DataFrame containing model coefficients.
+
+    Returns:
+        float: The predicted reimbursement amount.
+    """
+    
+    # --- FIX 1: Separate the intercept from the other feature coefficients ---
+    # The intercept is a special value added at the end, not multiplied by any feature.
+    try:
+        intercept = coefficients_df[coefficients_df['feature'] == 'intercept']['coefficient'].iloc[0]
+        feature_coeffs = coefficients_df[coefficients_df['feature'] != 'intercept']
+    except IndexError:
+        print("Error: 'intercept' not found in coefficients file.")
+        sys.exit(1)
+
+    # Ensure the order of coefficients matches the order we build our feature array
+    # This is crucial for the dot product to be correct.
+    ordered_coeffs = feature_coeffs.set_index('feature').reindex([
+        'trip_duration_days', 'miles_traveled', 'total_receipts_amount', 'm/d', 'r/d',
+        'r^2', 'm^2', 'd*m', 'log(d*r)', 'cents_bug_flag', 'log(r)'
+    ])['coefficient'].values
+
+
+    # --- FIX 2: Handle potential log(0) errors by adding a small epsilon or using np.log1p ---
+    # We use np.log1p(x) which calculates log(1+x), safely handling x=0.
+    # For products, we ensure the input to log is never zero.
+    log_dr_input = trip_duration_days * total_receipts_amount
+    log_r_input = total_receipts_amount
+    
+    # Create the feature array for the single prediction
+    features = np.array([
+        trip_duration_days,
+        miles_traveled,
+        total_receipts_amount,
+        miles_traveled / trip_duration_days if trip_duration_days > 0 else 0,
+        total_receipts_amount / trip_duration_days if trip_duration_days > 0 else 0,
+        total_receipts_amount ** 2,
+        miles_traveled ** 2,
+        trip_duration_days * miles_traveled,
+        np.log(log_dr_input) if log_dr_input > 0 else 0,
+        1 if round(total_receipts_amount % 1, 2) in [0.49, 0.99] else 0,
+        np.log(log_r_input) if log_r_input > 0 else 0,
+    ])
+
+    # --- FIX 3: Perform the correct linear algebra calculation ---
+    # The prediction is the dot product of features and their coefficients, plus the intercept.
+    # The shapes will now be correct: (1x11) dot (11x1) = a single value.
+    prediction = np.dot(features, ordered_coeffs) + intercept
+    
+    return prediction
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
         print("Usage: python calculate_reimbursement.py <trip_duration_days> <miles_traveled> <total_receipts_amount>")
         sys.exit(1)
     
-    trip_duration_days = float(sys.argv[1])
-    miles_traveled = float(sys.argv[2])
-    total_receipts_amount = float(sys.argv[3])
-    
-    # Load the XGBoost model
-    xgb_model = joblib.load('xgb_model.joblib')
-    
-    # Calculate derived features (same as in your training code)
-    # Avoid division by zero
-    safe_duration = trip_duration_days if trip_duration_days > 0 else 1
-    miles_per_day = miles_traveled / safe_duration
-    receipts_per_day = total_receipts_amount / safe_duration
-    
-    # Calculate tiered mileage feature
-    tiered_mileage_feature = calculate_tiered_mileage(miles_traveled)
-    
-    # Calculate boolean flags (same logic as training)
-    efficiency_bonus_flag = int(180 <= miles_per_day <= 220)
-    is_5_day_trip_flag = int(trip_duration_days == 5)
-    is_sweet_spot_duration_flag = int(4 <= trip_duration_days <= 6)
-    low_receipt_penalty_flag = int(0 < total_receipts_amount < 50)
-    
-    # Cents bug flag - check if cents part is 0.49 or 0.99
-    cents_part = round(total_receipts_amount % 1, 2)
-    cents_bug_flag = int(cents_part in [0.49, 0.99])
-    
-    # Sweet spot combo flag
-    sweet_spot_combo_flag = int(
-        trip_duration_days == 5 and 
-        miles_per_day >= 180 and 
-        receipts_per_day < 100
+    # Read command-line arguments
+    trip_duration_days_arg = float(sys.argv[1])
+    miles_traveled_arg = float(sys.argv[2])
+    total_receipts_amount_arg = float(sys.argv[3])
+
+    try:
+        # Load the coefficients from the specified CSV file
+        coefficients_df_main = pd.read_csv('linear_regression_coefficients.csv')
+    except FileNotFoundError:
+        print("Error: 'linear_regression_coefficients.csv' not found.")
+        print("Please ensure the CSV file with coefficients is in the same directory.")
+        sys.exit(1)
+
+    # Calculate the final output
+    output = calculate_reimbursement(
+        trip_duration_days_arg,
+        miles_traveled_arg,
+        total_receipts_amount_arg,
+        coefficients_df_main
     )
     
-    # Vacation penalty flag
-    vacation_penalty_flag = int(
-        trip_duration_days >= 8 and 
-        receipts_per_day > 90
-    )
-    
-    # Create feature array in the correct order (same as features_to_use in training)
-    features = np.array([[
-        trip_duration_days,
-        miles_traveled,
-        total_receipts_amount,
-        miles_per_day,
-        receipts_per_day,
-        tiered_mileage_feature,
-        efficiency_bonus_flag,
-        is_5_day_trip_flag,
-        is_sweet_spot_duration_flag,
-        low_receipt_penalty_flag,
-        cents_bug_flag,
-        sweet_spot_combo_flag,
-        vacation_penalty_flag
-    ]])
-    
-    # Predict the output
-    output = xgb_model.predict(features)
-    print(f"{output[0]:.2f}")
+    # Print the result rounded to 2 decimal places
+    print(f"{output:.2f}")
+
