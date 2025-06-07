@@ -1,0 +1,59 @@
+# This is the name of your GitHub Action workflow.
+# It will be displayed on the "Actions" tab of your repository.
+name: Run Reimbursement Model Evaluation
+
+# This section defines when the workflow will run.
+# 'on: [push]' means it will run every time you push code to any branch.
+on: [push]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel.
+jobs:
+  # This workflow contains a single job called "evaluate"
+  evaluate:
+    # The type of virtual machine to run the job on. 'ubuntu-latest' is a good default.
+    runs-on: ubuntu-latest
+
+    # 'steps' represents a sequence of tasks that will be executed as part of the job.
+    steps:
+      # Step 1: Check out your repository code
+      # This uses a pre-built action to download your code into the runner.
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Python environment
+      # This installs a specific version of Python for your scripts.
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      # Step 3: Install Python dependencies
+      # This step assumes you have a 'requirements.txt' file.
+      # It's a best practice to list all your Python libraries in this file.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Step 4: Make shell scripts executable
+      # This is a crucial step to avoid 'permission denied' errors on Linux runners.
+      - name: Make scripts executable
+        run: chmod +x *.sh
+
+      # Step 5: Run the evaluation script
+      # This runs the main evaluation against the public cases.
+      - name: Run evaluation script
+        run: ./eval.sh
+
+      # Step 6: Generate results for private cases
+      # This runs the script to generate the final submission file.
+      - name: Generate private results
+        run: ./generate_results.sh
+
+      # Step 7: Show the generated private results
+      # This prints the contents of the results file to the action's log
+      # so you can easily see the output without downloading artifacts.
+      - name: Show private results output
+        run: |
+          echo "--- Contents of private_results.txt ---"
+          cat private_results.txt
