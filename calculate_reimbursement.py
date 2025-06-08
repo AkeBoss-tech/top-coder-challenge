@@ -1,7 +1,5 @@
 import sys
-import numpy as np
-import pandas as pd
-from io import StringIO
+from math import log
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
@@ -31,7 +29,7 @@ if __name__ == "__main__":
     
 
     # Calculate the final output
-    output = c['intercept'] + c['trip_duration_days'] * trip_duration_days_arg + c['miles_traveled'] * miles_traveled_arg + c['total_receipts_amount'] * total_receipts_amount_arg + c['m/d'] * (miles_traveled_arg / trip_duration_days_arg) + c['r/d'] * (total_receipts_amount_arg / trip_duration_days_arg) + c['r^2'] * (total_receipts_amount_arg ** 2) + c['m^2'] * (miles_traveled_arg ** 2) + c['d*m'] * (trip_duration_days_arg * miles_traveled_arg) + c['log(d*r)'] * np.log(trip_duration_days_arg * total_receipts_amount_arg) + c['cents_bug_flag'] * (1 if round(total_receipts_amount_arg % 1, 2) in [0.49, 0.99] else 0) + c['log(r)'] * np.log(total_receipts_amount_arg)
+    output = c['intercept'] + c['trip_duration_days'] * trip_duration_days_arg + c['miles_traveled'] * miles_traveled_arg + c['total_receipts_amount'] * total_receipts_amount_arg + c['m/d'] * (miles_traveled_arg / trip_duration_days_arg) + c['r/d'] * (total_receipts_amount_arg / trip_duration_days_arg) + c['r^2'] * (total_receipts_amount_arg ** 2) + c['m^2'] * (miles_traveled_arg ** 2) + c['d*m'] * (trip_duration_days_arg * miles_traveled_arg) + c['log(d*r)'] * log(trip_duration_days_arg * total_receipts_amount_arg) + c['cents_bug_flag'] * (1 if round(total_receipts_amount_arg % 1, 2) in [0.49, 0.99] else 0) + c['log(r)'] * log(total_receipts_amount_arg)
     
     # Print the result rounded to 2 decimal places
     print(f"{output:.2f}")
