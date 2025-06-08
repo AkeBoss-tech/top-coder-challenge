@@ -1,6 +1,6 @@
 import sys
 from joblib import load
-import numpy as np
+from numpy import array
 from math import log
 import xgboost as xgb
 
